@@ -1,89 +1,163 @@
 #include <Arduino.h>
+
+/*
+   ==================================================
+      ROBOT AUTONOMO AMBIENTAL + REMOTEXY
+   ==================================================
+*/
+
+//////////////////////////////////////////////
+//           REMOTEXY CONFIG                //
+//////////////////////////////////////////////
+
+#define REMOTEXY_MODE__ESP32CORE_BLE
+
+#include <BLEDevice.h>
+#define REMOTEXY_BLUETOOTH_NAME "SmartCar UNAD"
+
+#include <RemoteXY.h>
+
+#pragma pack(push, 1)
+uint8_t const PROGMEM RemoteXY_CONF_PROGMEM[] =
+{
+  255,2,0,12,0,160,0,19,0,0,0,83,109,97,114,116,67,97,114,32,
+  85,78,65,68,0,31,1,106,200,1,1,5,0,130,241,34,129,41,27,17,
+  71,3,41,30,30,56,0,2,24,135,0,0,0,0,0,0,72,66,0,0,
+  160,65,0,0,32,65,0,0,0,64,24,84,101,109,112,101,114,97,116,117,
+  114,97,0,71,38,42,30,30,56,0,2,24,135,0,0,0,0,0,0,200,
+  66,0,0,160,65,0,0,32,65,0,0,0,64,24,72,117,109,101,100,97,
+  100,0,71,72,42,30,30,56,0,2,24,135,0,0,0,0,0,0,200,66,
+  0,0,160,65,0,0,32,65,0,0,0,64,24,65,105,114,101,0,5,23,
+  98,60,60,0,2,26,31
+};
+
+struct {
+
+  // INPUTS
+  int8_t joystick_01_x;
+  int8_t joystick_01_y;
+
+  // OUTPUTS
+  float Temperatura;
+  float Humedad;
+  float aire;
+
+  uint8_t connect_flag;
+
+} RemoteXY;
+
+#pragma pack(pop)
+
+//////////////////////////////////////////////
+//                LIBRERIAS                 //
+//////////////////////////////////////////////
+
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <ESP32Servo.h>
 #include <DHT.h>
 
-//==================================================
-// LCD I2C
-//==================================================
+//////////////////////////////////////////////
+//                 LCD                      //
+//////////////////////////////////////////////
+
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
-//==================================================
-// DHT22
-//==================================================
+//////////////////////////////////////////////
+//                 DHT22                    //
+//////////////////////////////////////////////
+
 #define DHTPIN 15
 #define DHTTYPE DHT22
 
 DHT dht(DHTPIN, DHTTYPE);
 
-//==================================================
-// SENSOR MQ2
-//==================================================
+//////////////////////////////////////////////
+//                 MQ2                      //
+//////////////////////////////////////////////
+
 const int MQ2_PIN = 34;
 
-//==================================================
-// PUENTE H L298N
-//==================================================
+//////////////////////////////////////////////
+//               MOTORES                    //
+//////////////////////////////////////////////
 
-// MOTOR IZQUIERDO
+// Motor derecho
 const int IN1 = 26;
 const int IN2 = 27;
 const int ENA = 33;
 
-// MOTOR DERECHO
+// Motor izquierdo
 const int IN3 = 14;
 const int IN4 = 12;
 const int ENB = 25;
 
-//==================================================
-// SENSOR ULTRASONICO
-//==================================================
+//////////////////////////////////////////////
+//             ULTRASONICO                  //
+//////////////////////////////////////////////
+
 const int TRIG = 4;
 const int ECHO = 2;
 
-//==================================================
-// SERVO SG90
-//==================================================
+//////////////////////////////////////////////
+//                 SERVO                    //
+//////////////////////////////////////////////
+
 Servo sonarServo;
+
 const int pinServo = 13;
 
-//==================================================
-// PWM ESP32
-//==================================================
+//////////////////////////////////////////////
+//                  PWM                     //
+//////////////////////////////////////////////
+
 const int canalENA = 0;
 const int canalENB = 1;
 
-const int frecuenciaPWM = 5000;
+const int frecuenciaPWM = 500;
 const int resolucionPWM = 8;
 
-//==================================================
-// VELOCIDADES
-//==================================================
-int velocidadIzq = 180;
-int velocidadDer = 180;
+//////////////////////////////////////////////
+//              VELOCIDADES                 //
+//////////////////////////////////////////////
 
-//==================================================
-// DISTANCIA MINIMA
-//==================================================
+int velocidadIzq = 255;
+int velocidadDer = 255;
+
+//////////////////////////////////////////////
+//          DISTANCIA MINIMA                //
+//////////////////////////////////////////////
+
 const int distanciaMinima = 25;
 
-//==================================================
-// VARIABLES AMBIENTALES
-//==================================================
+//////////////////////////////////////////////
+//        VARIABLES AMBIENTALES             //
+//////////////////////////////////////////////
+
 float temperatura = 0;
 float humedad = 0;
 int gasValor = 0;
 
-//==================================================
-// MENSAJE LCD
-//==================================================
-String mensaje =
-" Robot Ambiental Inteligente ESP32 ";
+//////////////////////////////////////////////
+//            MENSAJE LCD                   //
+//////////////////////////////////////////////
 
-//==================================================
-// SCROLL LCD
-//==================================================
+String mensaje = "Estacion de variables ambientales movil";
+
+/////////////////////////////////////////////////////
+//               FUNCIONES LCD                     //
+/////////////////////////////////////////////////////
+
+void pausaRX(unsigned long tiempo) {
+
+  unsigned long inicio = millis();
+
+  while (millis() - inicio < tiempo) {
+
+    RemoteXY_Handler();
+  }
+}
+
 void scrollTexto(String texto, int fila, int velocidadMs) {
 
   for (int i = 0; i < texto.length() - 15; i++) {
@@ -91,13 +165,10 @@ void scrollTexto(String texto, int fila, int velocidadMs) {
     lcd.setCursor(0, fila);
     lcd.print(texto.substring(i, i + 16));
 
-    delay(velocidadMs);
+    pausaRX(velocidadMs);
   }
 }
 
-//==================================================
-// PANTALLA INICIAL
-//==================================================
 void inicioSistema() {
 
   lcd.clear();
@@ -112,52 +183,56 @@ void inicioSistema() {
   lcd.setCursor(0, 1);
   lcd.print("Inicializando");
 
-  delay(2500);
+  pausaRX(2500);
 
   lcd.clear();
 }
 
-//==================================================
-// LEER SENSORES AMBIENTALES
-//==================================================
+/////////////////////////////////////////////////////
+//             LEER SENSORES                       //
+/////////////////////////////////////////////////////
+
 void leerSensores() {
 
   temperatura = dht.readTemperature();
+
   humedad = dht.readHumidity();
 
   gasValor = analogRead(MQ2_PIN);
 
+  // ENVIAR A REMOTEXY
+  RemoteXY.Temperatura = temperatura;
+  RemoteXY.Humedad = humedad;
+
+  RemoteXY.aire = map(gasValor, 0, 4095, 0, 100);
+
   Serial.println("===== MONITOREO =====");
 
   Serial.print("Temperatura: ");
-  Serial.print(temperatura);
-  Serial.println(" C");
+  Serial.println(temperatura);
 
   Serial.print("Humedad: ");
-  Serial.print(humedad);
-  Serial.println(" %");
+  Serial.println(humedad);
 
   Serial.print("MQ2: ");
   Serial.println(gasValor);
-
-  Serial.println("=====================");
 }
 
-//==================================================
-// MOSTRAR MONITOREO LCD
-//==================================================
+/////////////////////////////////////////////////////
+//             MOSTRAR LCD                         //
+/////////////////////////////////////////////////////
+
 void mostrarMonitoreo() {
 
   lcd.clear();
 
   lcd.setCursor(0, 0);
+
   lcd.print("T:");
   lcd.print(temperatura, 1);
-  lcd.print("C ");
 
-  lcd.print("H:");
+  lcd.print(" H:");
   lcd.print(humedad, 0);
-  lcd.print("%");
 
   lcd.setCursor(0, 1);
 
@@ -165,15 +240,18 @@ void mostrarMonitoreo() {
   lcd.print(gasValor);
 }
 
-//==================================================
-// MEDIR DISTANCIA
-//==================================================
+/////////////////////////////////////////////////////
+//           MEDIR DISTANCIA                       //
+/////////////////////////////////////////////////////
+
 float medirDistancia() {
 
   digitalWrite(TRIG, LOW);
+
   delayMicroseconds(2);
 
   digitalWrite(TRIG, HIGH);
+
   delayMicroseconds(10);
 
   digitalWrite(TRIG, LOW);
@@ -181,51 +259,46 @@ float medirDistancia() {
   long duracion = pulseIn(ECHO, HIGH, 30000);
 
   if (duracion == 0) {
+
     return 999;
   }
 
-  float distancia = duracion * 0.034 / 2;
-
-  return distancia;
+  return duracion * 0.034 / 2;
 }
 
-//==================================================
-// SERVO CENTRO
-//==================================================
+/////////////////////////////////////////////////////
+//                SERVO SONAR                     //
+/////////////////////////////////////////////////////
+
 void centrarServo() {
 
   sonarServo.write(90);
 
-  delay(350);
+  pausaRX(300);
 }
 
-//==================================================
-// MIRAR IZQUIERDA
-//==================================================
 float mirarIzquierda() {
 
   sonarServo.write(150);
 
-  delay(500);
+  pausaRX(500);
 
   return medirDistancia();
 }
 
-//==================================================
-// MIRAR DERECHA
-//==================================================
 float mirarDerecha() {
 
   sonarServo.write(30);
 
-  delay(500);
+  pausaRX(500);
 
   return medirDistancia();
 }
 
-//==================================================
-// DETENER
-//==================================================
+/////////////////////////////////////////////////////
+//              CONTROL MOTORES                    //
+/////////////////////////////////////////////////////
+
 void detenerMotores() {
 
   digitalWrite(IN1, LOW);
@@ -238,9 +311,6 @@ void detenerMotores() {
   ledcWrite(canalENB, 0);
 }
 
-//==================================================
-// ADELANTE
-//==================================================
 void motorAdelante() {
 
   digitalWrite(IN1, HIGH);
@@ -253,9 +323,6 @@ void motorAdelante() {
   ledcWrite(canalENB, velocidadDer);
 }
 
-//==================================================
-// ATRAS
-//==================================================
 void motorAtras() {
 
   digitalWrite(IN1, LOW);
@@ -268,9 +335,6 @@ void motorAtras() {
   ledcWrite(canalENB, velocidadDer);
 }
 
-//==================================================
-// GIRAR IZQUIERDA
-//==================================================
 void girarIzquierda() {
 
   digitalWrite(IN1, LOW);
@@ -283,9 +347,6 @@ void girarIzquierda() {
   ledcWrite(canalENB, velocidadDer);
 }
 
-//==================================================
-// GIRAR DERECHA
-//==================================================
 void girarDerecha() {
 
   digitalWrite(IN1, HIGH);
@@ -298,103 +359,103 @@ void girarDerecha() {
   ledcWrite(canalENB, velocidadDer);
 }
 
-//==================================================
-// SETUP
-//==================================================
-void setup() {
+/////////////////////////////////////////////////////
+//              MODO MANUAL                        //
+/////////////////////////////////////////////////////
 
-  Serial.begin(115200);
+void controlManual() {
 
-  //================================================
-  // LCD
-  //================================================
-  lcd.init();
-  lcd.backlight();
+  int x = RemoteXY.joystick_01_x;
+  int y = RemoteXY.joystick_01_y;
 
-  //================================================
-  // DHT22
-  //================================================
-  dht.begin();
+  if (abs(x) < 15 && abs(y) < 15) {
 
-  //================================================
-  // MOTORES
-  //================================================
-  pinMode(IN1, OUTPUT);
-  pinMode(IN2, OUTPUT);
+    detenerMotores();
 
-  pinMode(IN3, OUTPUT);
-  pinMode(IN4, OUTPUT);
+    return;
+  }
 
-  //================================================
-  // ULTRASONICO
-  //================================================
-  pinMode(TRIG, OUTPUT);
-  pinMode(ECHO, INPUT);
+  // ADELANTE
+  if (y > 40) {
 
-  //================================================
-  // MQ2
-  //================================================
-  pinMode(MQ2_PIN, INPUT);
+    lcd.clear();
 
-  //================================================
-  // PWM ESP32
-  //================================================
-  ledcSetup(canalENA, frecuenciaPWM, resolucionPWM);
-  ledcAttachPin(ENA, canalENA);
+    lcd.setCursor(0, 0);
+    lcd.print("ADELANTE");
 
-  ledcSetup(canalENB, frecuenciaPWM, resolucionPWM);
-  ledcAttachPin(ENB, canalENB);
+    motorAdelante();
 
-  //================================================
-  // SERVO
-  //================================================
-  sonarServo.setPeriodHertz(50);
+    pausaRX(500);
+  }
 
-  sonarServo.attach(
-    pinServo,
-    500,
-    2400
-  );
+  // ATRAS
+  else if (y < -40) {
 
-  centrarServo();
+    lcd.clear();
 
-  //================================================
-  // INICIO
-  //================================================
-  inicioSistema();
+    lcd.setCursor(0, 0);
+    lcd.print("ATRAS");
+
+    motorAtras();
+
+    pausaRX(500);
+  }
+
+  // IZQUIERDA
+  else if (x < -40) {
+
+    lcd.clear();
+
+    lcd.setCursor(0, 0);
+    lcd.print("IZQUIERDA");
+
+    girarIzquierda();
+
+    pausaRX(500);
+  }
+
+  // DERECHA
+  else if (x > 40) {
+
+    lcd.clear();
+
+    lcd.setCursor(0, 0);
+    lcd.print("DERECHA");
+
+    girarDerecha();
+
+    pausaRX(500);
+  }
+
+  mostrarMonitoreo();
 }
 
-//==================================================
-// LOOP PRINCIPAL
-//==================================================
-void loop() {
+/////////////////////////////////////////////////////
+//             MODO AUTONOMO                       //
+/////////////////////////////////////////////////////
 
-  //================================================
-  // LEER SENSORES
-  //================================================
-  leerSensores();
+void modoAutonomo() {
 
-  //================================================
-  // MOSTRAR MONITOREO
-  //================================================
+  lcd.clear();
+
+  lcd.setCursor(0, 0);
+  lcd.print("MODO");
+
+  lcd.setCursor(0, 1);
+  lcd.print("AUTONOMO");
+
+  pausaRX(700);
+
   mostrarMonitoreo();
 
-  //================================================
-  // CENTRAR SONAR
-  //================================================
   centrarServo();
 
-  //================================================
-  // MEDIR DISTANCIA
-  //================================================
   float distanciaFrente = medirDistancia();
 
-  Serial.print("Distancia Frente: ");
+  Serial.print("Distancia: ");
   Serial.println(distanciaFrente);
 
-  //================================================
-  // GAS ELEVADO
-  //================================================
+  // ALERTA GAS
   if (gasValor > 2500) {
 
     detenerMotores();
@@ -407,115 +468,156 @@ void loop() {
     lcd.setCursor(0, 1);
     lcd.print("Nivel Alto");
 
-    Serial.println("ALERTA DE GAS");
+    pausaRX(1500);
 
-    delay(2000);
+    mostrarMonitoreo();
 
     return;
   }
 
-  //================================================
   // CAMINO LIBRE
-  //================================================
   if (distanciaFrente > distanciaMinima) {
-
-    lcd.clear();
-
-    lcd.setCursor(0, 0);
-    lcd.print("Avanzando");
-
-    lcd.setCursor(0, 1);
-    lcd.print("Dist:");
-    lcd.print(distanciaFrente);
-    lcd.print("cm");
 
     motorAdelante();
   }
 
-  //================================================
   // OBSTACULO
-  //================================================
   else {
 
     detenerMotores();
 
-    lcd.clear();
-
-    lcd.setCursor(0, 0);
-    lcd.print("Obstaculo");
-
-    lcd.setCursor(0, 1);
-    lcd.print("Detectado");
-
-    delay(500);
-
-    //============================================
-    // RETROCEDER
-    //============================================
     motorAtras();
 
-    delay(700);
+    pausaRX(700);
 
     detenerMotores();
 
-    delay(300);
-
-    //============================================
-    // ESCANEAR
-    //============================================
-    float distanciaIzquierda = mirarIzquierda();
+    float izquierda = mirarIzquierda();
 
     centrarServo();
 
-    float distanciaDerecha = mirarDerecha();
+    float derecha = mirarDerecha();
 
     centrarServo();
 
-    //============================================
-    // MOSTRAR ESCANEO
-    //============================================
-    Serial.print("Izquierda: ");
-    Serial.println(distanciaIzquierda);
-
-    Serial.print("Derecha: ");
-    Serial.println(distanciaDerecha);
-
-    //============================================
-    // DECISION
-    //============================================
-    if (distanciaIzquierda > distanciaDerecha) {
+    if (izquierda > derecha) {
 
       lcd.clear();
 
       lcd.setCursor(0, 0);
-      lcd.print("Girando");
+      lcd.print("GIRO");
 
       lcd.setCursor(0, 1);
-      lcd.print("Izquierda");
+      lcd.print("IZQUIERDA");
 
       girarIzquierda();
 
-      delay(850);
+      pausaRX(850);
     }
     else {
 
       lcd.clear();
 
       lcd.setCursor(0, 0);
-      lcd.print("Girando");
+      lcd.print("GIRO");
 
       lcd.setCursor(0, 1);
-      lcd.print("Derecha");
+      lcd.print("DERECHA");
 
       girarDerecha();
 
-      delay(850);
+      pausaRX(850);
     }
 
     detenerMotores();
 
-    delay(300);
+    mostrarMonitoreo();
+  }
+}
+
+/////////////////////////////////////////////////////
+//                  SETUP                          //
+/////////////////////////////////////////////////////
+
+void setup() {
+
+  Serial.begin(115200);
+
+  // REMOTEXY
+  RemoteXY_Init();
+
+  // LCD
+  lcd.init();
+  lcd.backlight();
+
+  // DHT
+  dht.begin();
+
+  // MOTORES
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+
+  // ULTRASONICO
+  pinMode(TRIG, OUTPUT);
+  pinMode(ECHO, INPUT);
+
+  // MQ2
+  pinMode(MQ2_PIN, INPUT);
+
+  // PWM
+  ledcSetup(canalENA, frecuenciaPWM, resolucionPWM);
+  ledcAttachPin(ENA, canalENA);
+
+  ledcSetup(canalENB, frecuenciaPWM, resolucionPWM);
+  ledcAttachPin(ENB, canalENB);
+
+  // SERVO
+  sonarServo.setPeriodHertz(50);
+
+  sonarServo.attach(pinServo, 500, 2400);
+
+  centrarServo();
+
+  // INICIO
+  inicioSistema();
+}
+
+/////////////////////////////////////////////////////
+//                    LOOP                         //
+/////////////////////////////////////////////////////
+
+void loop() {
+
+  // ACTUALIZAR REMOTEXY
+  RemoteXY_Handler();
+
+  // LEER SENSORES
+  leerSensores();
+
+  // MOSTRAR DATOS
+  mostrarMonitoreo();
+
+  //================================================
+  // JOYSTICK CENTRADO = MODO AUTONOMO
+  //================================================
+
+  if (abs(RemoteXY.joystick_01_x) < 15 &&
+      abs(RemoteXY.joystick_01_y) < 15) {
+
+    modoAutonomo();
   }
 
-  delay(150);
+  //================================================
+  // CONTROL MANUAL
+  //================================================
+  else {
+
+    controlManual();
+  }
+
+  pausaRX(100);
 }
+
