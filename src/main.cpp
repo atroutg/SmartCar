@@ -10,26 +10,25 @@
 //           REMOTEXY CONFIG                //
 //////////////////////////////////////////////
 
-#define REMOTEXY_MODE__ESP32CORE_BLE
+#define REMOTEXY_MODE__ESP32CORE_BLUETOOTH
 
-#include <BLEDevice.h>
+#include <BluetoothSerial.h>
 #define REMOTEXY_BLUETOOTH_NAME "SmartCar UNAD"
 
 #include <RemoteXY.h>
 
 #pragma pack(push, 1)
-uint8_t const PROGMEM RemoteXY_CONF_PROGMEM[] =
-{
-  255,2,0,12,0,160,0,19,0,0,0,83,109,97,114,116,67,97,114,32,
+uint8_t const PROGMEM RemoteXY_CONF_PROGMEM[] =   // 197 bytes V19 
+  { 255,2,0,12,0,190,0,19,0,0,0,83,109,97,114,116,67,97,114,32,
   85,78,65,68,0,31,1,106,200,1,1,5,0,130,241,34,129,41,27,17,
-  71,3,41,30,30,56,0,2,24,135,0,0,0,0,0,0,72,66,0,0,
-  160,65,0,0,32,65,0,0,0,64,24,84,101,109,112,101,114,97,116,117,
-  114,97,0,71,38,42,30,30,56,0,2,24,135,0,0,0,0,0,0,200,
-  66,0,0,160,65,0,0,32,65,0,0,0,64,24,72,117,109,101,100,97,
-  100,0,71,72,42,30,30,56,0,2,24,135,0,0,0,0,0,0,200,66,
-  0,0,160,65,0,0,32,65,0,0,0,64,24,65,105,114,101,0,5,23,
-  98,60,60,0,2,26,31
-};
+  71,3,41,30,30,60,0,2,1,167,135,0,0,0,0,0,0,72,66,0,
+  0,160,64,0,0,128,63,0,0,0,0,24,84,101,109,112,101,114,97,116,
+  117,114,97,0,71,38,42,30,30,60,0,2,1,167,135,0,0,0,0,0,
+  0,200,66,0,0,32,65,0,0,160,64,0,0,0,0,24,72,117,109,101,
+  100,97,100,0,71,72,42,30,30,92,3,2,1,167,135,0,0,0,0,0,
+  240,127,69,0,0,32,65,0,0,160,64,0,0,128,63,24,65,105,114,101,
+  0,135,0,0,0,0,0,0,150,68,78,0,0,150,68,0,64,28,69,36,
+  0,64,28,69,0,72,153,69,5,23,98,60,60,1,2,26,31 };
 
 struct {
 
@@ -38,9 +37,9 @@ struct {
   int8_t joystick_01_y;
 
   // OUTPUTS
-  float Temperatura;
-  float Humedad;
-  float aire;
+  float Temperatura; // from 0 to 50
+  float Humedad; // from 0 to 100
+  float aire; // from 0 to 4095
 
   uint8_t connect_flag;
 
@@ -108,6 +107,12 @@ Servo sonarServo;
 const int pinServo = 13;
 
 //////////////////////////////////////////////
+//                 BUZZER                    //
+//////////////////////////////////////////////
+
+const int buzzerPin = 18;
+
+//////////////////////////////////////////////
 //                  PWM                     //
 //////////////////////////////////////////////
 
@@ -128,7 +133,7 @@ int velocidadDer = 255;
 //          DISTANCIA MINIMA                //
 //////////////////////////////////////////////
 
-const int distanciaMinima = 25;
+const int distanciaMinima = 25; // en centimetros
 
 //////////////////////////////////////////////
 //        VARIABLES AMBIENTALES             //
@@ -169,6 +174,37 @@ void scrollTexto(String texto, int fila, int velocidadMs) {
   }
 }
 
+/////////////////////////////////////////////////////
+//            ALARMA AUDIBLE - BUZZER              //
+/////////////////////////////////////////////////////
+
+void beepCorto() {
+
+  digitalWrite(buzzerPin, HIGH);
+
+  pausaRX(120);
+
+  digitalWrite(buzzerPin, LOW);
+}
+
+void beepAlarma() {
+
+  for (int i = 0; i < 3; i++) {
+
+    digitalWrite(buzzerPin, HIGH);
+
+    pausaRX(200);
+
+    digitalWrite(buzzerPin, LOW);
+
+    pausaRX(150);
+  }
+}
+
+/////////////////////////////////////////////////////
+//            INICIO DEL SISTEMA                 //
+/////////////////////////////////////////////////////
+
 void inicioSistema() {
 
   lcd.clear();
@@ -186,7 +222,10 @@ void inicioSistema() {
   pausaRX(2500);
 
   lcd.clear();
+  beepCorto();
 }
+
+
 
 /////////////////////////////////////////////////////
 //             LEER SENSORES                       //
@@ -204,7 +243,8 @@ void leerSensores() {
   RemoteXY.Temperatura = temperatura;
   RemoteXY.Humedad = humedad;
 
-  RemoteXY.aire = map(gasValor, 0, 4095, 0, 100);
+  //RemoteXY.aire = map(gasValor, 0, 4095, 0, 100);
+  RemoteXY.aire = gasValor;
 
   Serial.println("===== MONITOREO =====");
 
@@ -451,6 +491,8 @@ void modoAutonomo() {
   centrarServo();
 
   float distanciaFrente = medirDistancia();
+  
+  
 
   Serial.print("Distancia: ");
   Serial.println(distanciaFrente);
@@ -467,6 +509,8 @@ void modoAutonomo() {
 
     lcd.setCursor(0, 1);
     lcd.print("Nivel Alto");
+
+    beepAlarma();
 
     pausaRX(1500);
 
@@ -485,6 +529,8 @@ void modoAutonomo() {
   else {
 
     detenerMotores();
+
+    beepCorto();
 
     motorAtras();
 
@@ -566,6 +612,10 @@ void setup() {
 
   // MQ2
   pinMode(MQ2_PIN, INPUT);
+  
+  // BUZZER
+  pinMode(buzzerPin, OUTPUT);
+  digitalWrite(buzzerPin, LOW);
 
   // PWM
   ledcSetup(canalENA, frecuenciaPWM, resolucionPWM);
