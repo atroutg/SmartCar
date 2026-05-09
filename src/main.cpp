@@ -55,6 +55,8 @@ struct {
 #include <LiquidCrystal_I2C.h>
 #include <ESP32Servo.h>
 #include <DHT.h>
+#include <WiFi.h>
+#include <WiFiClient.h>
 
 //////////////////////////////////////////////
 //                 LCD                      //
@@ -149,6 +151,53 @@ int gasValor = 0;
 
 String mensaje = "Estacion de variables ambientales movil";
 
+
+/////////////////////////////////////////////////////
+//                 WIFI + API                      //
+/////////////////////////////////////////////////////
+
+const char* ssid = "RedmiTrout";
+const char* password = "unica123";
+// API KEY DE THINGSPEAK
+String apiKey = "R2BVK0H1306NGUTJ";
+
+unsigned long ultimoEnvio = 0;
+const long intervaloEnvio = 20000; // 20 segundos
+
+
+/////////////////////////////////////////////////////
+//            ENVIAR A THINGSPEAK                  //
+/////////////////////////////////////////////////////
+
+void enviarThingSpeak() {
+
+  if (WiFi.status() == WL_CONNECTED) {
+
+    WiFiClient client;
+
+    if (client.connect("api.thingspeak.com", 80)) {
+
+      String url = "/update?api_key=" + apiKey +
+                   "&field1=" + String(temperatura) +
+                   "&field2=" + String(humedad) +
+                   "&field3=" + String(gasValor);
+
+      client.print(String("GET ") + url + " HTTP/1.1\r\n" +
+                   "Host: api.thingspeak.com\r\n" +
+                   "Connection: close\r\n\r\n");
+
+      Serial.println("Datos enviados a ThingSpeak");
+
+      client.stop();
+    }
+    else {
+
+      Serial.println("Error conectando ThingSpeak");
+    }
+  }
+}
+
+
 /////////////////////////////////////////////////////
 //               FUNCIONES LCD                     //
 /////////////////////////////////////////////////////
@@ -163,6 +212,7 @@ void pausaRX(unsigned long tiempo) {
   }
 }
 
+
 void scrollTexto(String texto, int fila, int velocidadMs) {
 
   for (int i = 0; i < texto.length() - 15; i++) {
@@ -173,6 +223,7 @@ void scrollTexto(String texto, int fila, int velocidadMs) {
     pausaRX(velocidadMs);
   }
 }
+
 
 /////////////////////////////////////////////////////
 //            ALARMA AUDIBLE - BUZZER              //
@@ -589,6 +640,25 @@ void setup() {
 
   Serial.begin(115200);
 
+  //////////////////////////////////////////////////
+  // WIFI
+  //////////////////////////////////////////////////
+
+  WiFi.begin(ssid, password);
+
+  Serial.print("Conectando WiFi");
+
+  while (WiFi.status() != WL_CONNECTED) {
+
+    delay(500);
+
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("WiFi conectado");
+  Serial.println(WiFi.localIP());
+
   // REMOTEXY
   RemoteXY_Init();
 
@@ -646,6 +716,18 @@ void loop() {
 
   // LEER SENSORES
   leerSensores();
+
+
+  //////////////////////////////////////////////////
+  // ENVIAR A THINGSPEAK
+  //////////////////////////////////////////////////
+
+  if (millis() - ultimoEnvio > intervaloEnvio) {
+
+    enviarThingSpeak();
+
+    ultimoEnvio = millis();
+  }
 
   // MOSTRAR DATOS
   mostrarMonitoreo();
