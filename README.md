@@ -134,6 +134,8 @@ Los datos ambientales son enviados automáticamente a la nube:
 
 # 📱 Aplicación RemoteXY
 
+Web: https://remotexy.com/
+
 El robot utiliza RemoteXY mediante Bluetooth para:
 
 - Control manual
