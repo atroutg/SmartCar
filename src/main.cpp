@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <secrets.h>
 
 /*
    ==================================================
@@ -156,10 +157,10 @@ String mensaje = "Estacion de variables ambientales movil";
 //                 WIFI + API                      //
 /////////////////////////////////////////////////////
 
-const char* ssid = "RedmiTrout";
-const char* password = "unica123";
+const char* ssid = SECRET_WIFI_SSID;
+const char* password = SECRET_WIFI_PASSWORD;
 // API KEY DE THINGSPEAK
-String apiKey = "R2BVK0H1306NGUTJ";
+String apiKey = SECRET_API_KEY;
 
 unsigned long ultimoEnvio = 0;
 const long intervaloEnvio = 20000; // 20 segundos
