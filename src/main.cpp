@@ -648,12 +648,12 @@ void setup() {
 
   Serial.print("Conectando WiFi");
 
-  while (WiFi.status() != WL_CONNECTED) {
+  /*while (WiFi.status() != WL_CONNECTED) {
 
-    delay(500);
+    pausaRX(500);
 
     Serial.print(".");
-  }
+  }*/
 
   Serial.println("");
   Serial.println("WiFi conectado");
