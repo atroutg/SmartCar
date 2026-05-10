@@ -156,10 +156,10 @@ String mensaje = "Estacion de variables ambientales movil";
 //                 WIFI + API                      //
 /////////////////////////////////////////////////////
 
-const char* ssid = "RedmiTrout";
-const char* password = "unica123";
+const char* ssid = "TU_WIFI_NAME";
+const char* password = "TU_PASSWORD";
 // API KEY DE THINGSPEAK
-String apiKey = "R2BVK0H1306NGUTJ";
+String apiKey = "TU_API_THINGSPEAK_KEY";
 
 unsigned long ultimoEnvio = 0;
 const long intervaloEnvio = 20000; // 20 segundos
